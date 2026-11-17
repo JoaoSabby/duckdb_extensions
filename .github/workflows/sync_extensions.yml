@@ -24,7 +24,9 @@ jobs:
     env:
       DUCKDB_VERSION: v2.0.0
       PLATFORM: linux_amd64
-      QUERY_FARM_EXTENSIONS: a5 airport json_schema open_prompt
+      CORE_EXTENSIONS: encodings httpfs iceberg ui excel fts
+      COMMUNITY_EXTENSIONS: infera markdown mlpack nanoarrow pdf pivot_table quackiso rapidfuzz read_lines semantic_layer semantic_profile semantic_views secret_vault sheetreader sitting_duck stats_duck stochastic toml units cardinal compression_fs cronjob dash databricks decimal_arithmetic duck_lineage finetype fuzzycomplete ggsql yaml dq
+      QUERY_FARM_EXTENSIONS: json_schema
       CATALOG_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
