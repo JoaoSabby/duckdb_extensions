@@ -49,47 +49,13 @@ def fetch_required(url, destination, **options):
 
 
 def discover(version, staging):
-    # Read documented canonical names. The last column contains aliases
-    docs_version = ".".join(version.removeprefix("v").split(".")[:2])
-    core_catalog = staging / "core.md"
-    fetch_required(f"{CORE_DOCS}/{docs_version}/core_extensions/overview.md", core_catalog)
-
-    core_names = set(re.findall(
-        rf"^\|\s*\[({EXTENSION_NAME})\]\(",
-        core_catalog.read_text(encoding="utf-8"),
-        re.MULTILINE,
-    ))
-
-    # The recursive tree includes legacy descriptors. Downloads determine
-    # which names are actually published for the requested engine and platform
-    token = os.environ.get("CATALOG_TOKEN")
-    headers = [f"Authorization: Bearer {token}"] if token else []
-    community_catalog = staging / "community.json"
-    fetch_required(COMMUNITY_TREE, community_catalog, headers=headers)
-    catalog = json.loads(community_catalog.read_text(encoding="utf-8"))
-
-    if catalog.get("truncated") is not False:
-        raise RuntimeError("The Community catalog may be incomplete")
-
-    community_names = set()
-    for entry in catalog["tree"]:
-        descriptor = re.fullmatch(
-            rf"extensions/({EXTENSION_NAME})/description\.ya?ml", entry["path"]
-        )
-        if descriptor:
-            community_names.add(descriptor[1])
-
-    if not core_names or not community_names:
-        raise RuntimeError("Core and Community catalogs must both contain extension names")
-
-    # The configured Query.Farm builds take precedence over Community stubs
-    query_farm_names = set(os.environ["QUERY_FARM_EXTENSIONS"].split())
-    if any(not re.fullmatch(EXTENSION_NAME, name) for name in query_farm_names):
-        raise RuntimeError("Invalid extension name in QUERY_FARM_EXTENSIONS")
-
-    origins = {name: "community" for name in community_names}
-    origins.update(dict.fromkeys(core_names, "core"))
-    origins.update(dict.fromkeys(query_farm_names, "query_farm"))
+    # Restrict synchronization to the explicitly configured extensions
+    origins = {}
+    for origin in REPOSITORIES:
+        for name in os.environ.get(f"{origin.upper()}_EXTENSIONS", "").split():
+            if not re.fullmatch(EXTENSION_NAME, name):
+                raise ValueError(f"Invalid extension name: {name}")
+            origins[name] = origin
     return origins
 
 
