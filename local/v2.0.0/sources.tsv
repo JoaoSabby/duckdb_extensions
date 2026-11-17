@@ -1,0 +1,6 @@
+dash https://github.com/gropaul/dash.git cb595960e3eb66a578be8d118a23eb575170773a
+decimal_arithmetic https://github.com/duckdb/duckdb-decimal-arithmetic.git 66d59be49f75bcb164fd4f26b899cf9f075c4c58
+duck_lineage https://github.com/ilum-cloud/duck_lineage.git e4e663cfe1c9a207cd934775c10f63ebd5f946f6
+ggsql https://github.com/posit-dev/ggsql-duckdb.git 34709d2c079541174be0146c22d45e413cdc7222
+pivot_table https://github.com/Alex-Monahan/pivot_table.git 9852c3ad9af74f4aeb61f7140bd6220fd08fa0c5
+toml https://github.com/vergenzt/duckdb-toml.git 5e9d8c23fde544f0c89e8529f5a628323b941f3e

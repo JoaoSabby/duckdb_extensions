@@ -1,0 +1,49 @@
+name: Build and publish local DuckDB v2 extensions
+
+on:
+  push:
+    branches: ['local-v2.0.0-linux_amd64']
+    paths:
+      - '.github/workflows/publish_local_v2.yml'
+      - 'local/v2.0.0/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: duckdb-local-v2-linux-amd64
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/local-v2.0.0-linux_amd64'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libssl-dev libcurl4-openssl-dev
+          python3 -m pip install --user cmake==4.3.4
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          rustup toolchain install nightly-2026-10-22 --profile minimal --no-self-update
+
+      - name: Build, sign and test extensions
+        env:
+          RUSTUP_TOOLCHAIN: nightly-2026-10-22
+          CARGO_BUILD_JOBS: '3'
+        run: bash local/v2.0.0/build.sh "$RUNNER_TEMP/duckdb-local-release"
+
+      - name: Publish the validated bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create local-v2.0.0-linux_amd64 \
+            "$RUNNER_TEMP/duckdb-local-release/duckdb-local-v2.0.0-linux_amd64.tar.gz" \
+            "$RUNNER_TEMP/duckdb-local-release/SHA256SUMS" \
+            --target "$GITHUB_SHA" --latest=false \
+            --title 'Local DuckDB extensions v2.0.0 linux_amd64' \
+            --notes-file local/v2.0.0/LEIA-ME.md
