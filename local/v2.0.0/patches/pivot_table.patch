@@ -1,0 +1,169 @@
+diff --git a/src/pivot_table_extension.cpp b/src/pivot_table_extension.cpp
+index c2e7639..41bd4e3 100644
+--- a/src/pivot_table_extension.cpp
++++ b/src/pivot_table_extension.cpp
+@@ -23,7 +23,8 @@ namespace duckdb {
+ // If your function has parameters, add their names in quotes inside of the {}, with a nullptr at the end
+ //      If you do not have parameters, simplify to {nullptr}
+ // Add the text of your SQL macro as a raw string with the format R"( select 42 )"
+-static DefaultMacro dynamic_sql_examples_macros[] = {
++// Store scalar parameters in the same shape as the table macros.
++static const DefaultTableMacro dynamic_sql_examples_macros[] = {
+     // nq = no quotes
+     // sq = single quotes
+     // dq = double quotes
+@@ -36,18 +37,18 @@ static DefaultMacro dynamic_sql_examples_macros[] = {
+     )"},
+     {DEFAULT_SCHEMA, "sq", {"my_varchar", nullptr}, {{nullptr, nullptr}}, R"( ''''||replace(my_varchar,'''', '''''')||'''' )"},
+     {DEFAULT_SCHEMA, "dq", {"my_varchar", nullptr}, {{nullptr, nullptr}}, R"( '"'||replace(my_varchar,'"', '""')||'"' )"},
+-    {DEFAULT_SCHEMA, "nq_list", {"my_list", nullptr}, {{nullptr, nullptr}}, R"( list_transform(my_list, (i) -> nq(i)) )"},
+-    {DEFAULT_SCHEMA, "sq_list", {"my_list", nullptr}, {{nullptr, nullptr}}, R"( list_transform(my_list, (i) -> sq(i)) )"},
+-    {DEFAULT_SCHEMA, "dq_list", {"my_list", nullptr}, {{nullptr, nullptr}}, R"( list_transform(my_list, (i) -> dq(i)) )"},
++    {DEFAULT_SCHEMA, "nq_list", {"my_list", nullptr}, {{nullptr, nullptr}}, R"( list_transform(my_list, lambda i: nq(i)) )"},
++    {DEFAULT_SCHEMA, "sq_list", {"my_list", nullptr}, {{nullptr, nullptr}}, R"( list_transform(my_list, lambda i: sq(i)) )"},
++    {DEFAULT_SCHEMA, "dq_list", {"my_list", nullptr}, {{nullptr, nullptr}}, R"( list_transform(my_list, lambda i: dq(i)) )"},
+     {DEFAULT_SCHEMA, "nq_concat", {"my_list", "separator", nullptr}, {{nullptr, nullptr}}, R"( 
+         -- We want to tolerate cases where a list is blank and use it to remove entire clauses
+         -- (Ex: if there are no filters, there should be no where clause at all)
+         CASE WHEN length(my_list) = 0 THEN NULL
+-        ELSE list_reduce(nq_list(my_list), (x, y) -> x || separator || y)
++        ELSE list_reduce(nq_list(my_list), lambda x, y: x || separator || y)
+         END
+     )"},
+-    {DEFAULT_SCHEMA, "sq_concat", {"my_list", "separator", nullptr}, {{nullptr, nullptr}}, R"( list_reduce(sq_list(my_list), (x, y) -> x || separator || y) )"},
+-    {DEFAULT_SCHEMA, "dq_concat", {"my_list", "separator", nullptr}, {{nullptr, nullptr}}, R"( list_reduce(dq_list(my_list), (x, y) -> x || separator || y) )"},
++    {DEFAULT_SCHEMA, "sq_concat", {"my_list", "separator", nullptr}, {{nullptr, nullptr}}, R"( list_reduce(sq_list(my_list), lambda x, y: x || separator || y) )"},
++    {DEFAULT_SCHEMA, "dq_concat", {"my_list", "separator", nullptr}, {{nullptr, nullptr}}, R"( list_reduce(dq_list(my_list), lambda x, y: x || separator || y) )"},
+     {DEFAULT_SCHEMA, "totals_list", {"rows", nullptr}, {{"subtotals", "1"}, {"grand_totals", "1"}, {nullptr, nullptr}}, R"( 
+     -- Return a list of expressions that will be used in a "SELECT * REPLACE(" clause
+     -- in order to enable subtotals and/or grand totals.
+@@ -60,7 +61,7 @@ static DefaultMacro dynamic_sql_examples_macros[] = {
+             nq_concat(
+                 list_transform(
+                     rows[:-(i+1):-1],
+-                    (j) -> '''zzzGrand Total'' as ' || dq(j)
++                    lambda j: '''zzzGrand Total'' as ' || dq(j)
+                 ),
+                 ', '
+             )
+@@ -68,7 +69,7 @@ static DefaultMacro dynamic_sql_examples_macros[] = {
+             nq_concat(
+                 list_transform(
+                     rows[:-(i+1):-1],
+-                    (j) -> '''zzzSubtotal'' as ' || dq(j)
++                    lambda j: '''zzzSubtotal'' as ' || dq(j)
+                 ),
+                 ', '
+             )
+@@ -83,14 +84,14 @@ static DefaultMacro dynamic_sql_examples_macros[] = {
+         'SELECT 
+             replace(
+                 replace(
+-                    COLUMNS(c -> list_contains(['|| sq_concat(rows, ', ') ||', ' || 
++                    COLUMNS(lambda c: list_contains(['|| sq_concat(rows, ', ') ||', ' ||
+                         sq_concat(extra_cols, ', ')|| '], c))::varchar,
+                     ''zzzSubtotal'',
+                     ''Subtotal''
+                     ),
+                 ''zzzGrand Total'',
+                 ''Grand Total''),
+-            columns(c -> NOT list_contains(['||sq_concat(rows, ', ')||'], c) AND c NOT IN (' || 
++            columns(lambda c: NOT list_contains(['||sq_concat(rows, ', ')||'], c) AND c NOT IN (' ||
+                 sq_concat(extra_cols, ', ') ||'))
+         '
+     )"},
+@@ -107,10 +108,10 @@ static DefaultMacro dynamic_sql_examples_macros[] = {
+             -- using the GROUPING function, since in these cases GROUPING SETS are in use.
+             -- Then replace what would have been a NULL with the text Grand Total or Subtotal.
+             '||CASE WHEN (subtotals OR grand_totals) AND length(rows) > 0 THEN 
+-                nq_concat(list_transform(rows, (r) -> 'case when list_aggregate(['||nq_concat(
++                nq_concat(list_transform(rows, lambda r: 'case when list_aggregate(['||nq_concat(
+                         list_transform(
+                             rows,
+-                            (i) -> 'GROUPING('||dq(i)||')'),
++                            lambda i: 'GROUPING('||dq(i)||')'),
+                             ', ') ||'],
+                         ''sum'') = '||length(rows)||' then ''Grand Total''
+                     when GROUPING('||dq(r)||') = 1 then ''Subtotal'' 
+@@ -148,7 +149,7 @@ static DefaultMacro dynamic_sql_examples_macros[] = {
+         list_aggregate(['||nq_concat(
+                         list_transform(
+                             rows,
+-                            (i) -> 'GROUPING('||dq(i)||')'),
++                            lambda i: 'GROUPING('||dq(i)||')'),
+                             ', ') ||'],
+                         ''sum'') != '||length(rows) ELSE '' END|| '
+         
+@@ -159,7 +160,7 @@ static DefaultMacro dynamic_sql_examples_macros[] = {
+                 nq_concat(
+                     list_transform(
+                         rows,
+-                        (i) -> 'GROUPING('||dq(i)||'), '||dq(i)),
++                        lambda i: 'GROUPING('||dq(i)||'), '||dq(i)),
+                     ', ') || '
+                 -- If we have values_axis of rows, we need to include the value_names column to maintain deterministic ordering
+                 ' ||CASE WHEN values_axis = 'rows' AND length(values) > 0 THEN ', value_names ' ELSE ' ' END
+@@ -185,7 +186,7 @@ static DefaultMacro dynamic_sql_examples_macros[] = {
+                         '|| coalesce('WHERE 1=1 AND ' || nq_concat(filters, ' AND '), '')] || 
+                         list_transform(
+                             totals_list(rows, subtotals:=subtotals, grand_totals:=grand_totals),
+-                            k -> 
++                            lambda k:
+                             'FROM query_table(['||dq_concat(table_names, ', ')||']) 
+                             SELECT * replace(' || k || '), 1 as dummy_column
+ 
+@@ -231,7 +232,7 @@ static DefaultMacro dynamic_sql_examples_macros[] = {
+         'WITH raw_pivot AS ( '||
+             nq_concat(
+                 -- For each value, use a PIVOT statement, then stack each value together with UNION ALL BY NAME
+-                list_transform(values, (i) -> 
++                list_transform(values, lambda i:
+                     '
+                     FROM (
+                         PIVOT (
+@@ -248,7 +249,7 @@ static DefaultMacro dynamic_sql_examples_macros[] = {
+                                     '|| coalesce('WHERE 1=1 AND ' || nq_concat(filters, ' AND '), '')] || 
+                                     list_transform(
+                                         totals_list(rows, subtotals:=subtotals, grand_totals:=grand_totals),
+-                                        k -> 
++                                        lambda k:
+                                         'FROM query_table(['||dq_concat(table_names, ', ')||']) 
+                                         SELECT * replace(' || k || '), 1 as dummy_column, '|| sq(i) ||' AS value_names 
+ 
+@@ -325,7 +326,7 @@ static const DefaultTableMacro dynamic_sql_examples_table_macros[] = {
+             -- only use the combinations that actually exist in the data. 
+             -- This is achieved by only pivoting ON one expression (that has all columns concatenated together).
+             -- Therefore, we concatenate everything together here with an _ separator.
+-            '||coalesce(nq_concat(list_transform(dq_list(columns), (i) -> 'coalesce(' ||i||'::varchar , ''NULL'')'), ' || ''_'' || ')||'', '1')||'
++            '||coalesce(nq_concat(list_transform(dq_list(columns), lambda i: 'coalesce(' ||i||'::varchar , ''NULL'')'), ' || ''_'' || ')||'', '1')||'
+         '|| coalesce('WHERE 1=1 AND ' || nq_concat(filters, ' AND '), '') ||'
+         ORDER BY ALL
+         '
+@@ -383,7 +384,26 @@ static void LoadInternal(ExtensionLoader &loader) {
+ 
+     // Scalar Macros
+ 	for (idx_t index = 0; dynamic_sql_examples_macros[index].name != nullptr; index++) {
+-		auto info = DefaultFunctionGenerator::CreateInternalMacroInfo(dynamic_sql_examples_macros[index]);
++		const auto &macro = dynamic_sql_examples_macros[index];
++		vector<string> parameters;
++
++		// DuckDB 2.0 takes the complete SQL macro signature and expression.
++		for (auto parameter : macro.parameters) {
++			if (!parameter) {
++				break;
++			}
++			parameters.emplace_back(parameter);
++		}
++		for (const auto &parameter : macro.named_parameters) {
++			if (!parameter.name) {
++				break;
++			}
++			parameters.emplace_back(string(parameter.name) + " := " + parameter.default_value);
++		}
++
++		auto definition = "(" + StringUtil::Join(parameters, ", ") + ") AS (" + macro.macro + ")";
++		DefaultMacro scalar_macro {macro.schema, macro.name, definition.c_str()};
++		auto info = DefaultFunctionGenerator::CreateInternalMacroInfo(scalar_macro);
+ 		loader.RegisterFunction(*info);
+ 	}
+     // Table Macros

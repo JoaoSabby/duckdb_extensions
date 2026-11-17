@@ -1,0 +1,114 @@
+diff --git a/src/ggsql_bridge.cpp b/src/ggsql_bridge.cpp
+index 2bf1580..532f63e 100644
+--- a/src/ggsql_bridge.cpp
++++ b/src/ggsql_bridge.cpp
+@@ -1,6 +1,7 @@
+ #include "ggsql_bridge.hpp"
+ 
+-#include "duckdb/common/arrow/result_arrow_wrapper.hpp"
++#include "duckdb/common/arrow/arrow_converter.hpp"
++#include "duckdb/common/arrow/arrow_format.hpp"
+ #include "duckdb/main/client_context.hpp"
+ 
+ #include <cstdlib>
+@@ -19,8 +20,8 @@ constexpr idx_t ARROW_STREAM_BATCH_SIZE = 100000;
+ // consuming the stream, so client_properties.client_context stays valid.
+ // ---------------------------------------------------------------------------
+ struct InnerStream {
+-	unique_ptr<Connection> connection;
+-	unique_ptr<ResultArrowArrayStreamWrapper> inner;
++	unique_ptr<QueryResult> result;
++	std::string last_error;
+ };
+ 
+ void WriteError(ggsql_byte_buffer_t *out_err, const std::string &msg) {
+@@ -57,17 +58,36 @@ extern "C" void CppFreeBuffer(ggsql_byte_buffer_t *buf) {
+ 
+ extern "C" int InnerGetSchema(ArrowArrayStream *stream, ArrowSchema *out) {
+ 	auto *self = static_cast<InnerStream *>(stream->private_data);
+-	return self->inner->stream.get_schema(&self->inner->stream, out);
++	out->release = nullptr;
++	try {
++		auto &result = *self->result;
++		ArrowConverter::ToArrowSchema(out, result.GetTypes(), IdentifiersToStrings(result.GetNames()),
++		                              result.client_properties);
++		return 0;
++	} catch (const std::exception &ex) {
++		self->last_error = ex.what();
++		return 1;
++	}
+ }
+ 
+ extern "C" int InnerGetNext(ArrowArrayStream *stream, ArrowArray *out) {
+ 	auto *self = static_cast<InnerStream *>(stream->private_data);
+-	return self->inner->stream.get_next(&self->inner->stream, out);
++	out->release = nullptr;
++	try {
++		auto array = self->result->Fetch<ArrowFormat>();
++		if (array) {
++			array->MoveTo(*out);
++		}
++		return 0;
++	} catch (const std::exception &ex) {
++		self->last_error = ex.what();
++		return 1;
++	}
+ }
+ 
+ extern "C" const char *InnerGetLastError(ArrowArrayStream *stream) {
+ 	auto *self = static_cast<InnerStream *>(stream->private_data);
+-	return self->inner->stream.get_last_error(&self->inner->stream);
++	return self->last_error.empty() ? nullptr : self->last_error.c_str();
+ }
+ 
+ extern "C" void InnerRelease(ArrowArrayStream *stream) {
+@@ -111,7 +131,7 @@ extern "C" int32_t ExecSqlCallback(void *ctx, const char *sql, size_t sql_len, s
+ 	unique_ptr<QueryResult> result;
+ 	try {
+ 		EnsureInnerConnection(*bctx);
+-		result = bctx->inner->Query(query);
++		result = bctx->inner->Query(query, make_shared_ptr<ArrowFormat>(ARROW_STREAM_BATCH_SIZE));
+ 	} catch (const std::exception &ex) {
+ 		WriteError(out_err, ex.what());
+ 		return 1;
+@@ -129,19 +149,8 @@ extern "C" int32_t ExecSqlCallback(void *ctx, const char *sql, size_t sql_len, s
+ 		return 1;
+ 	}
+ 
+-	// The inner Connection must outlive the stream (QueryResult holds a raw pointer to
+-	// its ClientContext). Own both inside `holder` and hand off via the stream's
+-	// release callback. We use the inner `bctx->inner` directly — it already lives for
+-	// the full ggsql_execute call.
+-	try {
+-		holder->inner = make_uniq<ResultArrowArrayStreamWrapper>(std::move(result), ARROW_STREAM_BATCH_SIZE);
+-	} catch (const std::exception &ex) {
+-		WriteError(out_err, ex.what());
+-		return 1;
+-	} catch (...) {
+-		WriteError(out_err, "ggsql bridge: unknown exception building arrow stream");
+-		return 1;
+-	}
++	// The bridge owns the connection for the full ggsql call. The stream owns the query result.
++	holder->result = std::move(result);
+ 
+ 	out_stream->get_schema = InnerGetSchema;
+ 	out_stream->get_next = InnerGetNext;
+diff --git a/src/ggsql_exec.cpp b/src/ggsql_exec.cpp
+index 1f5d91a..7d1a58c 100644
+--- a/src/ggsql_exec.cpp
++++ b/src/ggsql_exec.cpp
+@@ -129,12 +129,8 @@ bool IsSilentOutputMode(ClientContext &context) {
+ 	return ResolveOutputMode(context) == MODE_SILENT;
+ }
+ 
+-GgsqlRunTableFunction::GgsqlRunTableFunction() {
+-	name = "ggsql_run";
+-	arguments.push_back(LogicalType::VARCHAR);
+-	bind = GgsqlRunBind;
+-	init_global = GgsqlRunInit;
+-	function = GgsqlRunExec;
++GgsqlRunTableFunction::GgsqlRunTableFunction()
++    : TableFunction("ggsql_run", {LogicalType::VARCHAR}, GgsqlRunExec, GgsqlRunBind, GgsqlRunInit) {
+ }
+ 
+ //===--------------------------------------------------------------------===//
