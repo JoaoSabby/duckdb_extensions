@@ -31,12 +31,20 @@ while read -r name url revision; do
   cp "$workDir/$name/LICENSE" "$repoDir/licenses/$name.txt"
 done < "$projectDir/sources.tsv"
 
+# Usa a revisão do nlohmann_json validada com o duck_lineage.
+git clone --depth 1 --branch v3.12.0 https://github.com/nlohmann/json.git "$workDir/nlohmann"
+test "$(git -C "$workDir/nlohmann" rev-parse HEAD)" = 55f93686c01528224f448c19128836e7df245f72
+cmake -S "$workDir/nlohmann" -B "$workDir/nlohmann-build" -G Ninja \
+  -DJSON_BuildTests=OFF -DJSON_Install=ON -DCMAKE_INSTALL_PREFIX="$workDir/nlohmann-install"
+cmake --install "$workDir/nlohmann-build"
+
 # A ligação estática mantém os binários carregáveis no R sem exportar os símbolos do pacote.
 cmake -S "$workDir/duckdb" -B "$workDir/build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.10 \
   -DDUCKDB_EXTENSION_CONFIGS="$workDir/extensions.cmake" -DDUCKDB_EXPLICIT_VERSION=v2.0.0 \
+  -Dnlohmann_json_DIR="$workDir/nlohmann-install/share/cmake/nlohmann_json" \
   -DEXTENSION_STATIC_BUILD=ON -DBUILD_SHELL=OFF -DBUILD_UNITTESTS=OFF
-cmake --build "$workDir/build" --parallel 3 --target "${targets[@]}"
+cmake --build "$workDir/build" --parallel 4 --target "${targets[@]}"
 
 # Assina o conteúdo e substitui apenas os 256 bytes reservados para a assinatura.
 (umask 077; openssl genrsa -out "$workDir/private.pem" 2048)

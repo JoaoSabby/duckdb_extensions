@@ -7,7 +7,7 @@ con <- DuckdbConnection()
 repo <- dbQuoteString(con, normalizePath(getwd(), mustWork = TRUE))
 stopifnot(file.exists(file.path(getwd(), ".well-known", "duckdb-extension-repo.json")))
 invisible(dbExecute(con, "SET allow_extension_repositories = 'allowed'"))
-invisible(dbExecute(con, paste(
+invisible(dbGetQuery(con, paste(
   "CREATE EXTENSION REPOSITORY IF NOT EXISTS sabby_local WITH PREFIX", repo
 )))
 
