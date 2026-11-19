@@ -9,7 +9,7 @@ on:
         default: false
   push:
     branches: [main]
-    paths: ['.github/workflows/sync_extensions.yml']
+    paths: ['.github/workflows/sync_extensions.yml', '.github/scripts/sync_extensions.py']
   schedule:
     - cron: '0 3 * * 0'
 
@@ -30,6 +30,7 @@ jobs:
       CORE_EXTENSIONS: encodings httpfs iceberg ui excel fts
       COMMUNITY_EXTENSIONS: infera markdown mlpack nanoarrow pdf quackiso rapidfuzz read_lines semantic_layer semantic_profile semantic_views secret_vault sheetreader sitting_duck stats_duck stochastic units cardinal compression_fs cronjob dash databricks duck_lineage finetype fuzzycomplete yaml dq
       QUERY_FARM_EXTENSIONS: json_schema
+      NEUESQL_EXTENSIONS: talib
       CATALOG_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -56,3 +57,4 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m "chore: refresh yaml and dq mirror binaries"
           git push origin "HEAD:${GITHUB_REF}"
+

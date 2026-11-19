@@ -21,6 +21,7 @@ REPOSITORIES = {
     "core": "https://extensions.duckdb.org",
     "community": "https://community-extensions.duckdb.org",
     "query_farm": "https://duckdb-extensions.query.farm",
+    "neuesql": "https://neuesql.github.io/atm_talib",
 }
 KEY_PATH = Path(".well-known/duckdb-extension-repo.json")
 RELEASE_ASSET_LIMIT = 2 * 1024**3 - 1
@@ -63,8 +64,8 @@ def fetch_extension(name, origin, version, platform, staging):
     relative = Path(version, platform, f"{name}.duckdb_extension.gz")
     url = f"{REPOSITORIES[origin]}/{relative.as_posix()}"
 
-    # Query.Farm uses its own signing keys and needs a separate DuckDB prefix
-    if origin == "query_farm":
+    # Keep third-party binaries separate from the official signing authorities
+    if origin in {"query_farm", "neuesql"}:
         relative = Path(origin) / relative
 
     temporary = staging / relative
@@ -202,11 +203,14 @@ def main():
         # Use separate releases so clients can identify the signing authority
         official_assets = []
         query_farm_assets = []
+        neuesql_assets = []
         for status, relative, _, _ in results:
             if status != "validated":
                 continue
             if relative.parts[0] == "query_farm":
                 query_farm_assets.append(staging / relative)
+            elif relative.parts[0] == "neuesql":
+                neuesql_assets.append(staging / relative)
             else:
                 official_assets.append(staging / relative)
 
@@ -223,6 +227,14 @@ def main():
                 [*query_farm_assets, key_file],
             )
 
+        # NeueSQL publishes unsigned binaries; do not mix them with signed assets
+        if neuesql_assets:
+            publish_release(
+                f"neuesql-{version}-{platform}",
+                f"NeueSQL unsigned extensions for DuckDB {version} ({platform})",
+                neuesql_assets,
+            )
+
         # Keep the existing raw GitHub URLs current for yaml and dq
         for source in official_assets:
             if source.name in {"yaml.duckdb_extension.gz", "dq.duckdb_extension.gz"}:
@@ -233,3 +245,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

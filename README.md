@@ -2,16 +2,17 @@
 
 Este repositório reúne, em um único projeto no GitHub, binários de extensões dos
 catálogos **Core** e **Community** do DuckDB e de projetos selecionados da
-**Query.Farm**. A centralização permite baixar os artefatos de uma mesma versão e
+**Query.Farm** e da **NeueSQL**. A centralização permite baixar os artefatos de uma mesma versão e
 plataforma, preparar instalações em ambientes isolados e localizar a documentação
 original de cada extensão.
 
 O espelho é configurado para **DuckDB v2.0.0 em Linux x86-64 (`linux_amd64`)**.
-O workflow descobre os nomes de Core e Community, consulta os binários da
+O workflow utiliza as listas de extensões configuradas no YAML, consulta os binários da
 combinação configurada e verifica a integridade dos arquivos gzip. Os artefatos
 são publicados nas [Releases do repositório](https://github.com/JoaoSabby/duckdb_extensions/releases) depois de uma
 sincronização com publicação habilitada. A assinatura original acompanha o
 binário. O DuckDB verifica a assinatura ao instalar ou carregar a extensão.
+Os binários sem assinatura da NeueSQL são publicados em uma Release separada.
 
 Os exemplos abaixo formam uma seleção de aplicações bancárias. O inventário
 publicado nas Releases é a referência para a disponibilidade de todos os
@@ -511,6 +512,61 @@ ORDER BY conta_destino;
 Fonte do desenvolvedor · [DuckPGQ, documentação do projeto](https://duckpgq.org/) ·
 [cwida/duckpgq-extension](https://github.com/cwida/duckpgq-extension).
 
+## Séries temporais e indicadores financeiros
+
+### `talib` · indicadores TA-Lib e atributos temporais
+
+Integra funções da TA-Lib para médias móveis, momentum, volatilidade e padrões
+de preços. O projeto de origem chama-se `atm_talib`; o nome usado em `INSTALL`
+e `LOAD` é `talib`. A origem NeueSQL participa da sincronização semanal por
+meio de `NEUESQL_EXTENSIONS: talib`.
+
+O binário sem assinatura é publicado na
+[Release NeueSQL do espelho](https://github.com/JoaoSabby/duckdb_extensions/releases/tag/neuesql-v2.0.0-linux_amd64),
+separado dos artefatos Core, Community e Query.Farm. Para preparar a instalação
+offline de DuckDB v2.0.0/Linux x86-64:
+
+```bash
+base='https://github.com/JoaoSabby/duckdb_extensions/releases/download'
+tag='neuesql-v2.0.0-linux_amd64'
+arquivo='talib.duckdb_extension'
+
+curl -fL "${base}/${tag}/${arquivo}.gz" -o "${arquivo}.gz" &&
+  gzip -dk "${arquivo}.gz"
+
+# Habilita a carga do binario sem assinatura nesta instancia do cliente
+duckdb -unsigned
+```
+
+Transfira o arquivo descompactado ao ambiente de destino. Na sessão iniciada
+com `-unsigned`, execute a instalação e o exemplo sintético de média móvel
+do saldo de uma conta:
+
+```sql
+INSTALL './talib.duckdb_extension';
+LOAD talib;
+
+WITH SALDOS_CONTA (ID_CLIENTE, DATA_REFERENCIA, SALDO) AS (
+    VALUES
+        (101, DATE '2026-08-31', 1000.0),
+        (101, DATE '2026-09-30', 1200.0),
+        (101, DATE '2026-10-31', 1400.0),
+        (101, DATE '2026-11-30', 1600.0)
+)
+SELECT
+    ID_CLIENTE,
+    t_sma(list(SALDO::DOUBLE ORDER BY DATA_REFERENCIA), 3) AS MEDIA_MOVEL_3
+FROM SALDOS_CONTA
+GROUP BY ID_CLIENTE;
+```
+
+As funções `t_*` recebem listas ordenadas; as funções `ta_*` admitem agregação
+e janelas. A média móvel exige três observações no exemplo. Para atributos de
+modelos preditivos, limite a série à data de corte e preserve a periodicidade.
+
+Fonte do desenvolvedor · [neuesql/atm_talib](https://github.com/neuesql/atm_talib) ·
+[Referência de funções](https://github.com/neuesql/atm_talib/blob/main/index.md).
+
 ## Geografia da rede bancária
 
 ### `spatial` · cobertura territorial de agências
@@ -626,3 +682,4 @@ FROM atendimento;
 
 Fonte do desenvolvedor · [Query.Farm, Open Prompt para DuckDB 2.0](https://query.farm/blog/openprompt-for-duckdb-2/) ·
 [Query-farm/openprompt](https://github.com/Query-farm/openprompt).
+
