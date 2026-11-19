@@ -484,6 +484,40 @@ WHERE NOT json_schema_is_valid(
 Fonte do desenvolvedor · [Query.Farm, JSON Schema para DuckDB 2.0](https://query.farm/blog/json-schema-for-duckdb-2/) ·
 [Query-farm/json_schema](https://github.com/Query-farm/json_schema).
 
+### `parser_tools` · auditoria de dependências SQL
+
+Analisa o texto SQL com o parser nativo do DuckDB e extrai tabelas, CTEs,
+funções e filtros sem executar a consulta analisada. O exemplo identifica
+as tabelas referenciadas em uma agregação de transações por cliente.
+
+```sql
+INSTALL parser_tools FROM community;
+LOAD parser_tools;
+
+-- Identifica dependências sem acessar as tabelas referenciadas
+SELECT *
+FROM parse_tables('
+    SELECT C.ID_CLIENTE, SUM(T.VALOR) AS VALOR_TOTAL
+    FROM CLIENTE C
+    JOIN TRANSACAO T ON T.ID_CLIENTE = C.ID_CLIENTE
+    GROUP BY C.ID_CLIENTE
+');
+```
+
+`is_parsable()` verifica a sintaxe; `parse_where_detailed()` detalha filtros;
+`parse_functions()` identifica funções e `parse_statements()` separa comandos.
+A validação sintática não confirma existência de objetos ou permissões.
+O parser segue o dialeto DuckDB, sem garantia de suporte a SQL Oracle/PLSQL.
+
+A extensão está configurada na sincronização Community para DuckDB v2.0.0/Linux
+x86-64. Na verificação de 19/11/2026, o download dessa combinação retornou HTTP
+404; portanto, o binário ainda não está disponível no espelho. As execuções
+seguintes tentarão baixá-lo novamente e publicarão o arquivo quando disponível.
+Os comandos de instalação acima dependem da disponibilidade para o cliente usado.
+
+Fonte do desenvolvedor · [hotdata-dev/duckdb_extension_parser_tools](https://github.com/hotdata-dev/duckdb_extension_parser_tools) ·
+[Catálogo DuckDB](https://duckdb.org/community_extensions/extensions/parser_tools).
+
 ### `icu` · fechamento diário em horário local
 
 Acrescenta suporte a fusos horários, calendários e colações. O exemplo converte o
