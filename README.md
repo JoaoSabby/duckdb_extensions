@@ -174,6 +174,27 @@ falhas. [Workflow de sincronização](.github/workflows/sync_extensions.yml).
 
 ## Leitura de arquivos e armazenamento
 
+### `encodings` · arquivos CSV de sistemas legados
+
+Acrescenta suporte à leitura de CSV em diferentes codificações de caracteres.
+O exemplo pressupõe um arquivo de transações com codificação Windows-1252,
+cabeçalho e separador ponto e vírgula. Informe a codificação efetiva do arquivo.
+
+```sql
+INSTALL encodings FROM core;
+LOAD encodings;
+
+SELECT *
+FROM read_csv(
+    'TRANSACOES.csv',
+    encoding = 'windows-1252-2000',
+    delim = ';',
+    header = true
+);
+```
+
+Fonte do desenvolvedor · [DuckDB, extensão Encodings](https://duckdb.org/docs/2.0/core_extensions/encodings).
+
 ### `json` · mensagens transacionais e Open Finance
 
 Lê e escreve JSON e extrai campos por caminho. O exemplo transforma uma mensagem
@@ -330,6 +351,45 @@ GROUP BY carteira;
 
 Fonte do desenvolvedor · [DuckDB, extensão PostgreSQL](https://duckdb.org/docs/2.0/core_extensions/postgres/overview) ·
 [DuckDB PostgreSQL no GitHub](https://github.com/duckdb/duckdb-postgres).
+
+### `oracle` · consulta e escrita em bancos Oracle
+
+Conecta o DuckDB ao Oracle para leitura e escrita de tabelas, integração de
+catálogos e envio de filtros e projeções ao banco. O projeto
+`cofin/duckdb-oracle` é distribuído como `oracle` pelo catálogo Community.
+O espelho utiliza esse canal, na Release compartilhada de Core e Community.
+
+Para abrir conexões, disponibilize Oracle Instant Client Basic 19c, 21c ou
+23ai por `OCI_LIB_DIR`, `ORACLE_HOME` ou pelo caminho de bibliotecas do sistema.
+Substitua as credenciais e o endereço pelos valores do ambiente. A consulta
+abaixo executa a agregação no Oracle antes de transferir os resultados.
+
+```sql
+INSTALL oracle FROM community;
+LOAD oracle;
+
+CREATE SECRET oracle_hml_leitura (
+    TYPE oracle,
+    HOST 'oracle.example.com',
+    PORT 1521,
+    SERVICE 'HML',
+    USER 'USUARIO_HML',
+    PASSWORD 'SUBSTITUIR_NA_SESSAO'
+);
+
+ATTACH '' AS ora (TYPE oracle, SECRET oracle_hml_leitura);
+
+SELECT *
+FROM oracle_query('ora', '
+    SELECT ID_CLIENTE, SUM(VALOR) AS VALOR_TOTAL
+    FROM RISCO_HML.TRANSACOES
+    WHERE DATA_REFERENCIA = DATE ''2026-10-01''
+    GROUP BY ID_CLIENTE
+');
+```
+
+Fonte do desenvolvedor · [cofin/duckdb-oracle](https://github.com/cofin/duckdb-oracle) ·
+[Registro Community](https://github.com/duckdb/community-extensions/blob/main/extensions/oracle/description.yml).
 
 ### `oraduck` · carga direta no Oracle
 
@@ -621,6 +681,22 @@ Fonte do desenvolvedor · [Query.Farm, A5 para DuckDB 2.0](https://query.farm/bl
 [Query-farm/a5](https://github.com/Query-farm/a5).
 
 ## Busca e análise de atendimento
+
+### `autocomplete` · sugestões de comandos SQL
+
+Fornece sugestões de autocompletar para consultas SQL. A extensão acompanha
+o cliente CLI; o espelho também disponibiliza o binário Core para instalação
+nos clientes que precisarem dele.
+
+```sql
+INSTALL autocomplete FROM core;
+LOAD autocomplete;
+
+SELECT *
+FROM sql_auto_complete('SEL');
+```
+
+Fonte do desenvolvedor · [DuckDB, extensão AutoComplete](https://duckdb.org/docs/2.0/core_extensions/autocomplete).
 
 ### `fts` · localização de reclamações
 
