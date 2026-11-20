@@ -238,6 +238,28 @@ GROUP BY canal;
 
 Fonte do desenvolvedor · [DuckDB, Parquet](https://duckdb.org/docs/2.0/data/parquet/overview).
 
+### `tarfs` · leitura de lotes em arquivos TAR
+
+Lê arquivos dentro de um `.tar` sem extraí-los previamente. O exemplo pressupõe
+um lote `liquidacoes.tar` contendo CSVs com as colunas `CANAL` e `VALOR`.
+O contêiner TAR deve estar sem compressão; `.tar.gz` não é suportado.
+
+```sql
+INSTALL tarfs FROM community;
+LOAD tarfs;
+
+SELECT CANAL, count(*) AS QUANTIDADE, sum(VALOR) AS VALOR_TOTAL
+FROM read_csv(
+    'tar://dados/liquidacoes.tar/*.csv',
+    header = true,
+    columns = {'CANAL': 'VARCHAR', 'VALOR': 'DECIMAL(15,2)'}
+)
+GROUP BY CANAL;
+```
+
+Fonte do desenvolvedor · [Maxxen/duckdb_tarfs](https://github.com/Maxxen/duckdb_tarfs) ·
+[Catálogo Community](https://duckdb.org/community_extensions/extensions/tarfs).
+
 ### `excel` · conciliação com planilhas
 
 Lê e grava arquivos `.xlsx`. Neste exemplo, a aba `Lancamentos` contém as colunas
@@ -329,6 +351,55 @@ GROUP BY adquirente;
 ```
 
 Fonte do desenvolvedor · [DuckDB, acesso HTTPS com HTTPFS](https://duckdb.org/docs/2.0/core_extensions/httpfs/https).
+
+### `quack` · consultas entre instâncias DuckDB
+
+Adiciona o protocolo cliente-servidor do DuckDB. O exemplo usa duas sessões
+DuckDB 2.0 na mesma máquina: a primeira publica uma tabela sintética de saldos;
+a segunda executa a agregação no servidor e recebe o resultado.
+
+Na sessão do servidor, mantenha o processo aberto e copie o `auth_token`
+retornado pelo comando `quack_serve` para a sessão cliente.
+
+```sql
+INSTALL quack FROM core;
+LOAD quack;
+
+CREATE TABLE SALDOS_DEMO AS
+SELECT CARTEIRA, SALDO::DECIMAL(15,2) AS SALDO
+FROM (VALUES ('VAREJO', 1000.00), ('VAREJO', 500.00)) AS T(CARTEIRA, SALDO);
+
+CALL quack_serve('quack:localhost');
+```
+
+Na sessão cliente, substitua o token ilustrativo pelo valor retornado.
+
+```sql
+INSTALL quack FROM core;
+LOAD quack;
+
+CREATE SECRET quack_hml (
+    TYPE quack,
+    TOKEN 'SUBSTITUIR_PELO_AUTH_TOKEN',
+    SCOPE 'quack:localhost'
+);
+
+ATTACH 'quack:localhost' AS remoto (TYPE quack);
+CONNECT remoto;
+
+SELECT CARTEIRA, sum(SALDO) AS SALDO_TOTAL
+FROM SALDOS_DEMO
+GROUP BY CARTEIRA;
+
+DISCONNECT;
+DETACH remoto;
+```
+
+Após encerrar o cliente, execute `CALL quack_stop('quack:localhost');` na sessão
+do servidor. O exemplo limita a escuta à máquina local.
+
+Fonte do desenvolvedor · [duckdb/duckdb-quack](https://github.com/duckdb/duckdb-quack) ·
+[Protocolo Quack no DuckDB 2.0](https://duckdb.org/docs/2.0/quack/overview).
 
 ### `postgres` · consulta a bases operacionais
 

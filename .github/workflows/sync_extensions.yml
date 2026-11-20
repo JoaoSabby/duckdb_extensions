@@ -27,8 +27,8 @@ jobs:
     env:
       DUCKDB_VERSION: v2.0.0
       PLATFORM: linux_amd64
-      CORE_EXTENSIONS: encodings httpfs iceberg ui excel fts autocomplete
-      COMMUNITY_EXTENSIONS: infera markdown mlpack nanoarrow pdf quackiso rapidfuzz read_lines semantic_layer semantic_profile semantic_views secret_vault sheetreader sitting_duck stats_duck stochastic units cardinal compression_fs cronjob dash databricks duck_lineage finetype fuzzycomplete yaml dq oracle parser_tools
+      CORE_EXTENSIONS: encodings httpfs iceberg ui excel fts autocomplete quack
+      COMMUNITY_EXTENSIONS: infera markdown mlpack nanoarrow pdf quackiso rapidfuzz read_lines semantic_layer semantic_profile semantic_views secret_vault sheetreader sitting_duck stats_duck stochastic units cardinal compression_fs cronjob dash databricks duck_lineage finetype fuzzycomplete yaml dq oracle parser_tools tarfs
       QUERY_FARM_EXTENSIONS: json_schema
       NEUESQL_EXTENSIONS: talib
       CATALOG_TOKEN: ${{ github.token }}
