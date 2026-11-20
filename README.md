@@ -260,6 +260,60 @@ GROUP BY CANAL;
 Fonte do desenvolvedor · [Maxxen/duckdb_tarfs](https://github.com/Maxxen/duckdb_tarfs) ·
 [Catálogo Community](https://duckdb.org/community_extensions/extensions/tarfs).
 
+### `zipfs` · leitura de remessas em arquivos ZIP
+
+Permite consultar arquivos internos de um ZIP. O exemplo pressupõe
+`dados/remessas.zip` contendo `liquidacoes.csv`, com `CANAL` e `VALOR`.
+
+```sql
+INSTALL zipfs FROM community;
+LOAD zipfs;
+
+-- Confere os arquivos disponíveis antes de selecionar a remessa
+SELECT * FROM zip_contents('dados/remessas.zip');
+
+-- Agrega a remessa sem uma etapa manual de extração
+SELECT CANAL, count(*) AS QUANTIDADE, sum(VALOR) AS VALOR_TOTAL
+FROM read_csv(
+    'zip://dados/remessas.zip/liquidacoes.csv',
+    header = true,
+    columns = {'CANAL': 'VARCHAR', 'VALOR': 'DECIMAL(15,2)'}
+)
+GROUP BY CANAL;
+```
+
+Arquivos internos comprimidos com DEFLATE são descomprimidos integralmente
+em memória; dimensione pelo tamanho descomprimido de cada arquivo.
+
+Fonte do desenvolvedor · [isaacbrodsky/duckdb-zipfs](https://github.com/isaacbrodsky/duckdb-zipfs) ·
+[Catálogo Community](https://duckdb.org/community_extensions/extensions/zipfs).
+
+### `hostfs` · inventário de arquivos de ingestão
+
+Lista arquivos e consulta metadados do sistema de arquivos acessível ao
+processo DuckDB. O exemplo inventaria o diretório de entrada das remessas.
+Substitua `/dados/remessas` pelo caminho existente no ambiente.
+
+```sql
+INSTALL hostfs FROM community;
+LOAD hostfs;
+
+-- Identifica tamanho e atualização dos arquivos disponíveis para ingestão
+SELECT
+    path AS CAMINHO,
+    file_size(path) AS TAMANHO_BYTES,
+    file_last_modified(path) AS ULTIMA_MODIFICACAO
+FROM ls('/dados/remessas')
+WHERE is_file(path)
+ORDER BY ULTIMA_MODIFICACAO DESC;
+```
+
+O resultado descreve os arquivos no momento da consulta; não constitui
+registro persistente de carga nem comprova que uma transferência terminou.
+
+Fonte do desenvolvedor · [gropaul/hostFS](https://github.com/gropaul/hostFS) ·
+[Catálogo Community](https://duckdb.org/community_extensions/extensions/hostfs).
+
 ### `excel` · conciliação com planilhas
 
 Lê e grava arquivos `.xlsx`. Neste exemplo, a aba `Lancamentos` contém as colunas
@@ -351,6 +405,40 @@ GROUP BY adquirente;
 ```
 
 Fonte do desenvolvedor · [DuckDB, acesso HTTPS com HTTPFS](https://duckdb.org/docs/2.0/core_extensions/httpfs/https).
+
+### `cache_httpfs` · cache de leituras remotas
+
+Adiciona cache de blocos e metadados às leituras do `httpfs`, carregado
+automaticamente como dependência. O exemplo configura cache em memória
+para consultas repetidas a um Parquet de liquidações.
+Substitua a URL ilustrativa por um arquivo de homologação acessível.
+
+```sql
+INSTALL cache_httpfs FROM community;
+LOAD cache_httpfs;
+
+-- Seleciona o cache antes da primeira leitura remota
+SET cache_httpfs_type = 'in_mem';
+
+SELECT ADQUIRENTE, sum(VALOR_LIQUIDO) AS TOTAL_LIQUIDADO
+FROM read_parquet('https://dados.example.com/liquidacoes/2026-10.parquet')
+GROUP BY ADQUIRENTE;
+
+-- Inspeciona os blocos presentes após a leitura
+SELECT * FROM cache_httpfs_cache_status_query();
+```
+
+Prefira objetos imutáveis ou versionados. Se um arquivo for substituído
+no mesmo endereço, invalide seu cache antes da próxima consulta:
+
+```sql
+SELECT cache_httpfs_clear_cache_for_file(
+    'https://dados.example.com/liquidacoes/2026-10.parquet'
+);
+```
+
+Fonte do desenvolvedor · [dentiny/duck-read-cache-fs](https://github.com/dentiny/duck-read-cache-fs) ·
+[Catálogo Community](https://duckdb.org/community_extensions/extensions/cache_httpfs).
 
 ### `quack` · consultas entre instâncias DuckDB
 
@@ -509,6 +597,51 @@ GROUP BY bandeira;
 
 Fonte do desenvolvedor · [Airport, documentação do projeto](https://airport.query.farm/) ·
 [Query-farm/airport](https://github.com/Query-farm/airport).
+
+## Credenciais e armazenamento de segredos
+
+### `secret_vault` · segredos persistentes criptografados
+
+Registra o armazenamento `local_encrypted` para segredos persistentes,
+com criptografia AES-256-GCM. A extensão já integra a lista Community
+do espelho. O exemplo prepara uma credencial S3 de homologação.
+
+Antes de iniciar o DuckDB, o agendador deve fornecer `SECRET_VAULT_KEY`
+com uma chave de 32 bytes codificada em Base64. Preserve a chave para
+reabrir os segredos em execuções posteriores; não gere outra a cada carga.
+Substitua os valores ilustrativos pelas credenciais do ambiente.
+
+```sql
+INSTALL httpfs FROM core;
+LOAD httpfs;
+
+INSTALL secret_vault FROM community;
+LOAD secret_vault;
+
+-- Usa a chave fornecida ao processo pelo agendador
+SET secret_vault_provider = 'env';
+
+-- Persiste a credencial explicitamente no armazenamento criptografado
+CREATE PERSISTENT SECRET s3_remessas_hml IN local_encrypted (
+    TYPE s3,
+    KEY_ID 'SUBSTITUIR_KEY_ID',
+    SECRET 'SUBSTITUIR_SECRET',
+    REGION 'us-east-1',
+    SCOPE 's3://remessas-hml/'
+);
+
+-- Confere o armazenamento sem selecionar o conteúdo da credencial
+SELECT name, storage
+FROM duckdb_secrets()
+WHERE name = 's3_remessas_hml';
+```
+
+Carregar a extensão não migra os segredos existentes em `local_file`.
+O provedor é uma configuração global do processo; não altere seu valor
+simultaneamente em sessões concorrentes.
+
+Fonte do desenvolvedor · [robert-guangzhou/duckdb-secret-vault](https://github.com/robert-guangzhou/duckdb-secret-vault) ·
+[Catálogo Community](https://duckdb.org/community_extensions/extensions/secret_vault).
 
 ## Qualidade, contratos e auditoria
 
